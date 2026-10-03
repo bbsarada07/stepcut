@@ -19,3 +19,13 @@ export const LANGUAGES: Language[] = [
   { code: "zh", name: "Chinese Simplified", nativeName: "简体中文", fontFamily: "Noto Sans SC", rtl: false },
   { code: "ja", name: "Japanese", nativeName: "日本語", fontFamily: "Noto Sans JP", rtl: false },
 ];
+
+/** Match a language name to the list case-insensitively; anything else becomes a custom language. */
+export function matchLanguage(name: string): Language {
+  const n = name.trim().toLowerCase();
+  const found = LANGUAGES.find((l) => l.name.toLowerCase() === n || l.nativeName.toLowerCase() === n);
+  if (found) return found;
+  const label = name.trim() || "English";
+  const slug = label.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "custom";
+  return { code: `x-${slug}`, name: label, nativeName: label, fontFamily: "Noto Sans", rtl: false };
+}

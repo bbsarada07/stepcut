@@ -12,7 +12,11 @@ import {
   useTracksStore,
   type InitialTrackConfig,
 } from "@elah/editor";
-import { Film, Languages, Pause, Play, ScanEye, ShieldCheck, Upload } from "lucide-react";
+import { Film, Languages, Loader2, Pause, Play, RotateCcw, ScanEye, ShieldCheck, Upload, WandSparkles } from "lucide-react";
+import { PlanView, type Captions } from "@/components/PlanView";
+import { MAX_DURATION_SEC, sampleFrames } from "@/lib/frames";
+import { matchLanguage, type Language } from "@/lib/languages";
+import type { FrameSample, Plan, PlanRequest, PlanResponse } from "@/lib/types";
 import {
   Backdrop,
   EmptyScreen,
@@ -57,7 +61,56 @@ function StudioInner() {
   const [request, setRequest] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-  const current: StageName = source ? "Preview" : "Request";
+  const [file, setFile] = useState<File | null>(null);
+  const [work, setWork] = useState<{ kind: "idle" } | { kind: "sampling"; done: number; total: number } | { kind: "planning" }>({ kind: "idle" });
+  const [planError, setPlanError] = useState<string | null>(null);
+  const [frames, setFrames] = useState<FrameSample[]>([]);
+  const [plan, setPlan] = useState<Plan | null>(null);
+  const [captions, setCaptions] = useState<Captions>({});
+  const [lang, setLang] = useState<Language | null>(null);
+  const [modelUsed, setModelUsed] = useState("");
+  const busy = work.kind !== "idle";
+  const current: StageName = plan || busy ? "AI Plan" : "Request";
+
+  async function makePlan() {
+    if (!file || !source || busy) return;
+    setPlanError(null);
+    setPlan(null);
+    try {
+      setWork({ kind: "sampling", done: 0, total: 0 });
+      const sampled = await sampleFrames(file, source.durationSec, (done, total) => setWork({ kind: "sampling", done, total }));
+      setFrames(sampled);
+      setWork({ kind: "planning" });
+      const body: PlanRequest = { request: request.trim(), languageName: null, durationSec: source.durationSec, frames: sampled };
+      const json = JSON.stringify(body);
+      if (json.length > 4 * 1024 * 1024) throw new Error("This recording produced too much data. Try a shorter recording.");
+      const res = await fetch("/api/plan", { method: "POST", headers: { "Content-Type": "application/json" }, body: json });
+      const data = await res.json().catch(() => ({ error: `Server error (${res.status}). Please try again.` }));
+      if (!res.ok) throw new Error(data.error ?? `Server error (${res.status}). Please try again.`);
+      const { plan: planned, modelUsed: used } = data as PlanResponse;
+
+      // Caption store: English from captionEn, plus the plan's own language.
+      const planLang = matchLanguage(planned.language);
+      const next: Captions = { en: {} };
+      if (planLang.code !== "en") next[planLang.code] = {};
+      for (const st of planned.steps) {
+        next.en[st.id] = st.captionEn;
+        if (planLang.code !== "en") next[planLang.code][st.id] = st.caption;
+      }
+      setCaptions(next);
+      setLang(planLang);
+      setModelUsed(used);
+      setPlan({
+        title: planned.title,
+        language: planLang.name,
+        steps: planned.steps.map((st) => ({ id: st.id, startSec: st.startSec, endSec: st.endSec, captionEn: st.captionEn, sensitive: st.sensitive, sensitiveLabel: st.sensitiveLabel, boxes: st.boxes, keep: true, hide: true })),
+      });
+    } catch (err) {
+      setPlanError((err as Error).message || "Something went wrong. Please try again.");
+    } finally {
+      setWork({ kind: "idle" });
+    }
+  }
 
   async function onPick(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -72,9 +125,16 @@ function StudioInner() {
       const asset = imported[0] ?? dup;
       if (!asset) throw new Error("Couldn't read that video. Try an MP4 screen recording.");
       const dims = asset.width && asset.height ? { width: asset.width, height: asset.height } : await probeDims(asset.src);
+      if (asset.durationSec > MAX_DURATION_SEC) {
+        throw new Error(`This recording is ${Math.round(asset.durationSec)} seconds long. StepCut works with recordings up to 90 seconds.`);
+      }
       const next: Source = { src: asset.src, assetId: asset.id, name: file.name, ...dims, durationSec: asset.durationSec };
       loadSource(next);
       setSource(next);
+      setFile(file);
+      setPlan(null);
+      setFrames([]);
+      setPlanError(null);
     } catch (err) {
       setError((err as Error).message);
     } finally {
@@ -177,7 +237,7 @@ function StudioInner() {
                       {source ? `${source.width}×${source.height} · ${source.durationSec.toFixed(1)}s · tap to change` : "Phone screen recording, up to 90 seconds"}
                     </span>
                   </span>
-                  <input type="file" accept="video/*" className="sr-only" onChange={onPick} disabled={loading} />
+                  <input type="file" accept="video/*" className="sr-only" onChange={onPick} disabled={loading || busy} />
                 </label>
               </div>
 
@@ -197,7 +257,37 @@ function StudioInner() {
                   {error}
                 </p>
               )}
+
+              <button
+                type="button"
+                onClick={makePlan}
+                disabled={!source || !request.trim() || busy}
+                className="glow-accent flex min-h-14 items-center justify-center gap-2 rounded-2xl bg-accent px-5 font-heading text-lg font-bold text-bg disabled:cursor-not-allowed disabled:opacity-40 disabled:shadow-none"
+              >
+                {busy ? <Loader2 size={20} className="animate-spin" /> : <WandSparkles size={20} />}
+                {work.kind === "sampling"
+                  ? `Sampling frames ${work.done}/${work.total || "…"}`
+                  : work.kind === "planning"
+                    ? "Reading your recording"
+                    : plan
+                      ? "Make a new plan"
+                      : "Make my tutorial"}
+              </button>
+              {!busy && !plan && (!source || !request.trim()) && (
+                <p className="-mt-3 text-center text-[12px] text-fg/45">{!source ? "Pick a recording first" : "Tell StepCut who it's for"}</p>
+              )}
+
+              {planError && (
+                <div role="alert" className="flex flex-col gap-3 rounded-2xl border border-fg/20 bg-fg/5 p-4">
+                  <p className="text-sm">{planError}</p>
+                  <button type="button" onClick={makePlan} className="flex min-h-11 items-center justify-center gap-2 self-start rounded-xl border border-fg/25 px-4 text-sm font-semibold">
+                    <RotateCcw size={16} /> Try again
+                  </button>
+                </div>
+              )}
             </SpotCard>
+
+            {plan && lang && <PlanView plan={plan} captions={captions} lang={lang} frames={frames} modelUsed={modelUsed} />}
 
             <p className="text-center text-[11px] tracking-wide text-fg/35 md:text-left">
               Gemma 4 through the Gemini API · Elah video engine · video never leaves your browser

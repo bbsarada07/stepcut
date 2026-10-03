@@ -211,6 +211,15 @@ body::after {
   50% { box-shadow: 0 0 0 6px rgb(198 255 61 / 0); }
 }
 
+/* Step cards slide in one by one when the plan arrives. */
+.card-in {
+  animation: card-in 0.5s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+@keyframes card-in {
+  from { opacity: 0; transform: translateX(24px); }
+  to { opacity: 1; transform: none; }
+}
+
 /* Respect reduced motion: everything above holds still. */
 @media (prefers-reduced-motion: reduce) {
   *,

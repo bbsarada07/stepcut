@@ -31,7 +31,9 @@ export function Wordmark() {
           <path d="M2 14 L22 10" />
         </svg>
       </span>
-      Step<span className="text-accent">Cut</span>
+      <span>
+        Step<span className="text-accent">Cut</span>
+      </span>
     </span>
   );
 }
