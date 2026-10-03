@@ -4,7 +4,7 @@ import { ModelCallError, VISION_MODEL, callModel, fallbackFor } from "@/lib/mode
 import { parseModelJson, validatePlan } from "@/lib/validatePlan";
 import type { FrameSample, PlanResponse } from "@/lib/types";
 
-export const maxDuration = 60;
+export const maxDuration = 120;
 
 const MAX_BODY_BYTES = 4 * 1024 * 1024;
 const MAX_ATTEMPTS = 2;
@@ -47,7 +47,7 @@ function systemInstruction(request: string, languageName: string | null) {
   const languageRule = languageName
     ? `Write the captions in ${languageName}.`
     : "Write the captions in the language the request asks for; if none is named, use English.";
-  return `You turn a phone screen recording into a tutorial. You receive frames with timestamps. The user's request: ${request}. ${languageRule} Follow the request for tone and audience. Identify the distinct actions the user performs, in order. Return 3 to 8 steps. Each step covers the time range where that action is visible, at least 1.5 seconds, no overlaps, within the video duration. Skip loading screens, idle time and repeated frames. For each step write captionEn in English and caption in the caption language. Each is an instruction to the viewer, at most 8 words or 40 characters, naming the exact button or field shown on screen. Keep app names, button labels and numbers exactly as they appear on screen. For each step, check whether the screen shows private data: account balance, account or card number, phone number, email, OTP, full name, address, UPI ID. If so set sensitive true, give a short English sensitiveLabel, and give one box per private item in boxes as [ymin, xmin, ymax, xmax], each 0 to 1000 relative to the frame. If unsure of a position, leave boxes empty. Return JSON only: { title, language (English name of the caption language), steps: [{ startSec, endSec, captionEn, caption, sensitive, sensitiveLabel, boxes }] }.`;
+  return `You turn a phone screen recording into a tutorial. You receive frames with timestamps. The user's request: ${request}. ${languageRule} Follow the request for tone and audience. Identify the distinct actions the user performs, in order. Return 3 to 8 steps. Each step covers the time range where that action is visible, at least 1.5 seconds, no overlaps, within the video duration. Skip loading screens, idle time and repeated frames. For each step write captionEn in English and caption in the caption language. Each is an instruction to the viewer, at most 8 words or 40 characters, naming the exact button or field shown on screen. Keep app names, button labels and numbers exactly as they appear on screen. For each step, check whether the screen shows private data: account balance, account or card number, phone number, email, OTP, full name, address, UPI ID. If so set sensitive true, give a short English sensitiveLabel, and give one box per private item in boxes as [ymin, xmin, ymax, xmax], each 0 to 1000 relative to the frame. If unsure of a position, leave boxes empty. Return JSON only: { title, language (English name of the caption language), steps: [{ startSec, endSec, captionEn, caption, sensitive, sensitiveLabel, boxes }] }. Answer immediately. Do not think step by step and do not write any reasoning; output only the JSON.`;
 }
 
 function bad(message: string, status = 400) {

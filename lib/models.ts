@@ -17,7 +17,8 @@ export function fallbackFor(model: string): string {
   return model === VISION_MODEL ? TEXT_MODEL : VISION_MODEL;
 }
 
-export const CALL_TIMEOUT_MS = 25_000;
+// Under event load Gemma can take well over 25s; 55s keeps two attempts inside the route limit.
+export const CALL_TIMEOUT_MS = 55_000;
 
 let client: GoogleGenAI | null = null;
 export function getAI(): GoogleGenAI {
