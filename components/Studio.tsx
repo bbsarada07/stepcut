@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   EditorProvider,
   Preview,
@@ -71,6 +71,12 @@ function StudioInner() {
   const [modelUsed, setModelUsed] = useState("");
   const busy = work.kind !== "idle";
   const current: StageName = plan || busy ? "AI Plan" : "Request";
+  const resultsRef = useRef<HTMLDivElement>(null);
+
+  // Scroll to the results as soon as there is something to show there.
+  useEffect(() => {
+    if (plan || planError || work.kind === "planning") resultsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, [plan, planError, work.kind]);
 
   async function makePlan() {
     if (!file || !source || busy) return;
@@ -85,8 +91,14 @@ function StudioInner() {
       const json = JSON.stringify(body);
       if (json.length > 4 * 1024 * 1024) throw new Error("This recording produced too much data. Try a shorter recording.");
       const res = await fetch("/api/plan", { method: "POST", headers: { "Content-Type": "application/json" }, body: json });
-      const data = await res.json().catch(() => ({ error: `Server error (${res.status}). Please try again.` }));
-      if (!res.ok) throw new Error(data.error ?? `Server error (${res.status}). Please try again.`);
+      const raw = await res.text();
+      let data: { error?: string } & Partial<PlanResponse>;
+      try {
+        data = JSON.parse(raw);
+      } catch {
+        throw new Error(`Server error ${res.status}: ${raw.slice(0, 300) || res.statusText}`);
+      }
+      if (!res.ok) throw new Error(data.error ?? `Server error ${res.status}`);
       const { plan: planned, modelUsed: used } = data as PlanResponse;
 
       // Caption store: English from captionEn, plus the plan's own language.
@@ -180,11 +192,16 @@ function StudioInner() {
 
         <div className="grid items-start gap-8 pt-6 md:grid-cols-[minmax(0,1fr)_minmax(0,1.05fr)] md:gap-12 md:pt-10">
           {/* Preview: on top on mobile, left column on desktop. */}
-          <section className="rise relative flex flex-col items-center gap-5 md:sticky md:top-36">
+          <section className="rise relative flex w-full min-w-0 flex-col items-center gap-5 md:sticky md:top-36">
             {!source && <FloatingChips />}
             <PhoneFrame aspect={stageSize.width / stageSize.height}>
               {/* Audio disabled: the app never plays sound. */}
-              <Preview demuxerFactory={demuxerFactory} enableAudio={false} clearColor={[0, 0, 0, 1]} style={{ width: "100%", height: "100%" }} />
+              <Preview
+                demuxerFactory={demuxerFactory}
+                enableAudio={false}
+                clearColor={[0, 0, 0, 1]}
+                style={{ position: "absolute", inset: 0, width: "100%", height: "100%" }}
+              />
               {!source && <EmptyScreen />}
             </PhoneFrame>
             {source && <Transport />}
@@ -253,7 +270,7 @@ function StudioInner() {
               </div>
 
               {error && (
-                <p role="alert" className="rounded-2xl border border-fg/20 bg-fg/5 p-4 text-sm">
+                <p role="alert" className="rounded-2xl border border-red-500/40 bg-red-500/10 p-4 text-sm text-red-400">
                   {error}
                 </p>
               )}
@@ -261,33 +278,32 @@ function StudioInner() {
               <button
                 type="button"
                 onClick={makePlan}
-                disabled={!source || !request.trim() || busy}
+                disabled={!source || busy}
                 className="glow-accent flex min-h-14 items-center justify-center gap-2 rounded-2xl bg-accent px-5 font-heading text-lg font-bold text-bg disabled:cursor-not-allowed disabled:opacity-40 disabled:shadow-none"
               >
                 {busy ? <Loader2 size={20} className="animate-spin" /> : <WandSparkles size={20} />}
-                {work.kind === "sampling"
-                  ? `Sampling frames ${work.done}/${work.total || "…"}`
-                  : work.kind === "planning"
-                    ? "Reading your recording"
-                    : plan
-                      ? "Make a new plan"
-                      : "Make my tutorial"}
+                Make tutorial
               </button>
-              {!busy && !plan && (!source || !request.trim()) && (
-                <p className="-mt-3 text-center text-[12px] text-fg/45">{!source ? "Pick a recording first" : "Tell StepCut who it's for"}</p>
-              )}
+              {!source && <p className="-mt-3 text-center text-[12px] text-fg/45">Pick a recording first</p>}
 
-              {planError && (
-                <div role="alert" className="flex flex-col gap-3 rounded-2xl border border-fg/20 bg-fg/5 p-4">
-                  <p className="text-sm">{planError}</p>
-                  <button type="button" onClick={makePlan} className="flex min-h-11 items-center justify-center gap-2 self-start rounded-xl border border-fg/25 px-4 text-sm font-semibold">
-                    <RotateCcw size={16} /> Try again
-                  </button>
-                </div>
-              )}
+              <div ref={resultsRef} className="scroll-mt-40">
+                {busy && (
+                  <p className="flex items-center gap-2 rounded-2xl border border-fg/10 bg-bg/60 p-4 text-sm font-semibold">
+                    <Loader2 size={16} className="animate-spin text-accent" />
+                    {work.kind === "sampling" ? `Capturing frames ${work.done}/${work.total || "…"}` : "Reading your recording…"}
+                  </p>
+                )}
+                {planError && !busy && (
+                  <div role="alert" className="flex flex-col gap-3 rounded-2xl border border-red-500/40 bg-red-500/10 p-4">
+                    <p className="text-sm font-medium text-red-400">{planError}</p>
+                    <button type="button" onClick={makePlan} className="flex min-h-11 items-center justify-center gap-2 self-start rounded-xl border border-fg/25 px-4 text-sm font-semibold">
+                      <RotateCcw size={16} /> Try again
+                    </button>
+                  </div>
+                )}
+                {plan && lang && !busy && <PlanView plan={plan} captions={captions} lang={lang} frames={frames} modelUsed={modelUsed} />}
+              </div>
             </SpotCard>
-
-            {plan && lang && <PlanView plan={plan} captions={captions} lang={lang} frames={frames} modelUsed={modelUsed} />}
 
             <p className="text-center text-[11px] tracking-wide text-fg/35 md:text-left">
               Gemma 4 through the Gemini API · Elah video engine · video never leaves your browser

@@ -1,25 +1,20 @@
 import type { FrameSample } from "@/lib/types";
 
 export const MAX_DURATION_SEC = 90;
-const MAX_FRAMES = 20;
-const FRAME_WIDTH = 640;
+const FRAME_COUNT = 6;
+const FRAME_WIDTH = 512;
 const JPEG_QUALITY = 0.6;
 const STATIC_THRESHOLD = 4; // mean absolute difference on a 0..255 scale
 const DIFF_SIZE = 32;
 
-/** One frame per second, at most 20; longer videos widen the interval evenly. */
+/** Six frames spaced evenly across the video, each in the middle of its slice. */
 export function sampleTimes(durationSec: number): number[] {
-  let count = Math.floor(durationSec) + 1;
-  let interval = 1;
-  if (count > MAX_FRAMES) {
-    count = MAX_FRAMES;
-    interval = durationSec / MAX_FRAMES;
-  }
+  const interval = durationSec / FRAME_COUNT;
   const last = Math.max(0, durationSec - 0.05);
-  return Array.from({ length: count }, (_, i) => Math.round(Math.min(i * interval, last) * 100) / 100);
+  return Array.from({ length: FRAME_COUNT }, (_, i) => Math.round(Math.min((i + 0.5) * interval, last) * 100) / 100);
 }
 
-function waitFor(video: HTMLVideoElement, event: "loadeddata" | "seeked", ms = 8000) {
+function waitFor(video: HTMLVideoElement, event: "loadedmetadata" | "seeked", ms = 8000) {
   return new Promise<void>((resolve, reject) => {
     const timer = setTimeout(() => done(new Error("The video took too long to load a frame.")), ms);
     const ok = () => done();
@@ -55,7 +50,7 @@ export async function sampleFrames(
   document.body.appendChild(video);
 
   try {
-    const loaded = waitFor(video, "loadeddata");
+    const loaded = waitFor(video, "loadedmetadata");
     video.src = url;
     await loaded;
 
@@ -75,6 +70,7 @@ export async function sampleFrames(
     let prevGrey: Float32Array | null = null;
 
     for (let i = 0; i < times.length; i++) {
+      // Draw only after the seek has landed on the new frame.
       const seeked = waitFor(video, "seeked");
       video.currentTime = times[i];
       await seeked;

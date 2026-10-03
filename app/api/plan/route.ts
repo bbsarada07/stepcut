@@ -44,8 +44,10 @@ function isJsonConfigRejection(err: ModelCallError) {
 }
 
 function systemInstruction(request: string, languageName: string | null) {
-  const language = languageName ?? "infer it from the user's request, and if no language is named use English";
-  return `You turn a phone screen recording into a tutorial. You receive frames with timestamps. The user's request: ${request}. Follow it for tone and audience. Caption language: ${language}. Identify the distinct actions the user performs, in order. Return 3 to 8 steps. Each step covers the time range where that action is visible, at least 1.5 seconds, no overlaps, within the video duration. Skip loading screens, idle time and repeated frames. For each step write captionEn in English and caption in the caption language. Each is an instruction to the viewer, at most 8 words or 40 characters, naming the exact button or field shown on screen. Keep app names, button labels and numbers exactly as they appear on screen. For each step, check whether the screen shows private data: account balance, account or card number, phone number, email, OTP, full name, address, UPI ID. If so set sensitive true, give a short English sensitiveLabel, and give one box per private item in boxes as [ymin, xmin, ymax, xmax], each 0 to 1000 relative to the frame. If unsure of a position, leave boxes empty. Return JSON only: { title, language (English name of the caption language), steps: [{ startSec, endSec, captionEn, caption, sensitive, sensitiveLabel, boxes }] }.`;
+  const languageRule = languageName
+    ? `Write the captions in ${languageName}.`
+    : "Write the captions in the language the request asks for; if none is named, use English.";
+  return `You turn a phone screen recording into a tutorial. You receive frames with timestamps. The user's request: ${request}. ${languageRule} Follow the request for tone and audience. Identify the distinct actions the user performs, in order. Return 3 to 8 steps. Each step covers the time range where that action is visible, at least 1.5 seconds, no overlaps, within the video duration. Skip loading screens, idle time and repeated frames. For each step write captionEn in English and caption in the caption language. Each is an instruction to the viewer, at most 8 words or 40 characters, naming the exact button or field shown on screen. Keep app names, button labels and numbers exactly as they appear on screen. For each step, check whether the screen shows private data: account balance, account or card number, phone number, email, OTP, full name, address, UPI ID. If so set sensitive true, give a short English sensitiveLabel, and give one box per private item in boxes as [ymin, xmin, ymax, xmax], each 0 to 1000 relative to the frame. If unsure of a position, leave boxes empty. Return JSON only: { title, language (English name of the caption language), steps: [{ startSec, endSec, captionEn, caption, sensitive, sensitiveLabel, boxes }] }.`;
 }
 
 function bad(message: string, status = 400) {
@@ -68,7 +70,6 @@ export async function POST(req: Request) {
   const languageName = typeof body.languageName === "string" && body.languageName.trim() ? body.languageName.trim().slice(0, 60) : null;
   const durationSec = Number(body.durationSec);
   const frames = body.frames as FrameSample[];
-  if (!request) return bad("Tell StepCut who the tutorial is for.");
   if (!Number.isFinite(durationSec) || durationSec <= 0) return bad("Missing video duration.");
   if (durationSec > 90.5) return bad("Recordings must be 90 seconds or shorter.");
   if (
@@ -101,8 +102,18 @@ export async function POST(req: Request) {
         },
       });
       if (useJson) jsonModeWorks.set(model, true);
-      const plan = validatePlan(parseModelJson(text), durationSec);
+      let parsed: unknown;
+      try {
+        parsed = parseModelJson(text);
+      } catch (parseErr) {
+        console.error(`[plan] ${model} attempt ${attempt}: reply is not valid JSON. Raw reply:
+${text}`);
+        throw parseErr;
+      }
+      const plan = validatePlan(parsed, durationSec);
       if (plan) return NextResponse.json({ plan, modelUsed: model } satisfies PlanResponse);
+      console.error(`[plan] ${model} attempt ${attempt}: fewer than 2 valid steps. Raw reply:
+${text}`);
       lastProblem = "steps";
       model = fallbackFor(model);
     } catch (err) {
@@ -113,6 +124,7 @@ export async function POST(req: Request) {
       } else if (err instanceof ModelCallError) {
         lastProblem = "api";
         lastError = err.message;
+        console.error(`[plan] ${model} attempt ${attempt} failed: ${err.message}`);
         if (useJson && isJsonConfigRejection(err)) {
           // Retry the same model without JSON mode; fences are stripped on parse.
           jsonModeWorks.set(model, false);

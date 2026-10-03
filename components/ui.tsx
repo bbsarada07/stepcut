@@ -68,26 +68,45 @@ export function StageRail({ current }: { current: StageName }) {
   );
 }
 
-export function PhoneFrame({ aspect, children }: { aspect: number; children: React.ReactNode }) {
+/**
+ * Display box for the preview: width 100%, the video's aspect ratio, overflow
+ * hidden. The stage stays at the video's pixel size; only the display scales.
+ */
+function Screen({ aspect, className, children }: { aspect: number; className: string; children: React.ReactNode }) {
   return (
-    <div className="relative">
+    <div className={`relative w-full overflow-hidden bg-black ${className}`} style={{ aspectRatio: String(aspect) }}>
+      {children}
+    </div>
+  );
+}
+
+export function PhoneFrame({ aspect, children }: { aspect: number; children: React.ReactNode }) {
+  if (aspect > 1) {
+    // Landscape video: a plain rounded rectangle instead of a phone.
+    return (
+      <div className="w-full rounded-2xl border border-fg/15 bg-black p-1.5 shadow-2xl">
+        <Screen aspect={aspect} className="rounded-xl">
+          {children}
+        </Screen>
+      </div>
+    );
+  }
+  return (
+    // Width-limited so a tall portrait video never exceeds ~60% of the viewport height.
+    <div className="relative w-full" style={{ maxWidth: `calc(min(60dvh, 620px) * ${aspect} + 1.25rem)` }}>
       <span className="phone-halo" aria-hidden />
       <span className="phone-rim" aria-hidden />
-      <div className="phone-bezel relative rounded-[2.6rem] px-2.5 pb-2.5 pt-7">
+      <div className="phone-bezel relative w-full rounded-[2.6rem] px-2.5 pb-2.5 pt-7">
         {/* Side buttons */}
         <span className="absolute -left-[3px] top-24 h-10 w-[3px] rounded-l bg-[#2c2c31]" />
         <span className="absolute -left-[3px] top-36 h-14 w-[3px] rounded-l bg-[#2c2c31]" />
         <span className="absolute -right-[3px] top-28 h-16 w-[3px] rounded-r bg-[#2c2c31]" />
         {/* Island sits on the bezel, above the screen, so it never hides video. */}
         <span className="absolute left-1/2 top-2.5 h-[14px] w-20 -translate-x-1/2 rounded-full bg-black ring-1 ring-white/5" />
-        {/* The screen has the stage's aspect ratio, so Preview fits with no letterboxing. */}
-        <div
-          className="relative overflow-hidden rounded-[2rem] bg-black ring-1 ring-white/5"
-          style={{ aspectRatio: String(aspect), width: `min(calc(100vw - 3.5rem), calc(min(60dvh, 620px) * ${aspect}))` }}
-        >
+        <Screen aspect={aspect} className="rounded-[2rem] ring-1 ring-white/5">
           {children}
           <span className="phone-sheen" aria-hidden />
-        </div>
+        </Screen>
       </div>
     </div>
   );
