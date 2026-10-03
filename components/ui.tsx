@@ -47,20 +47,43 @@ export function LiveBadge() {
   );
 }
 
-export function StageRail({ current }: { current: StageName }) {
+/** Progress rail. Each stage is a button that jumps to its part of the page once that part exists. */
+export function StageRail({
+  current,
+  available,
+  onSelect,
+}: {
+  current: StageName;
+  available: Record<StageName, boolean>;
+  onSelect: (stage: StageName) => void;
+}) {
   const idx = STAGES.indexOf(current);
   return (
     <ol className="grid grid-cols-4 gap-2" aria-label="Progress">
       {STAGES.map((s, i) => {
         const lit = i === idx;
         const done = i < idx;
+        const enabled = available[s];
         return (
-          <li key={s} className="flex flex-col gap-1.5" aria-current={lit ? "step" : undefined}>
-            <span className={`h-1 rounded-full ${lit ? "glow-accent bg-accent" : done ? "bg-accent/45" : "bg-fg/12"}`} />
-            <span className={`flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider ${lit ? "text-accent" : done ? "text-fg/70" : "text-fg/35"}`}>
-              {lit ? <span className="live-dot size-1.5 shrink-0 rounded-full bg-accent" /> : <span className="tabular-nums opacity-60">0{i + 1}</span>}
-              <span className="truncate">{s}</span>
-            </span>
+          <li key={s}>
+            <button
+              type="button"
+              onClick={() => onSelect(s)}
+              disabled={!enabled}
+              aria-current={lit ? "step" : undefined}
+              title={enabled ? `Go to ${s}` : `${s} isn't available yet`}
+              className="group flex min-h-11 w-full flex-col justify-center gap-1.5 rounded-lg text-left enabled:cursor-pointer disabled:cursor-not-allowed"
+            >
+              <span
+                className={`h-1 w-full rounded-full ${lit ? "glow-accent bg-accent" : done ? "bg-accent/45 group-enabled:group-hover:bg-accent/70" : enabled ? "bg-fg/25 group-hover:bg-fg/40" : "bg-fg/12"}`}
+              />
+              <span
+                className={`flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider ${lit ? "text-accent" : done ? "text-fg/70 group-hover:text-fg" : enabled ? "text-fg/55 group-hover:text-fg" : "text-fg/30"}`}
+              >
+                {lit ? <span className="live-dot size-1.5 shrink-0 rounded-full bg-accent" /> : <span className="tabular-nums opacity-60">0{i + 1}</span>}
+                <span className="truncate">{s}</span>
+              </span>
+            </button>
           </li>
         );
       })}

@@ -187,12 +187,19 @@ function StudioInner() {
             <Wordmark />
             <LiveBadge />
           </div>
-          <StageRail current={current} />
+          <StageRail
+            current={current}
+            available={{ Request: true, "AI Plan": !!plan || busy || !!planError, Preview: !!source, Decide: false }}
+            onSelect={(stage) => {
+              const id = { Request: "stage-request", "AI Plan": "stage-plan", Preview: "stage-preview", Decide: "stage-plan" }[stage];
+              document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
+            }}
+          />
         </header>
 
         <div className="grid items-start gap-8 pt-6 md:grid-cols-[minmax(0,1fr)_minmax(0,1.05fr)] md:gap-12 md:pt-10">
           {/* Preview: on top on mobile, left column on desktop. */}
-          <section className="rise relative flex w-full min-w-0 flex-col items-center gap-5 md:sticky md:top-36">
+          <section id="stage-preview" className="rise relative flex w-full min-w-0 scroll-mt-40 flex-col items-center gap-5 md:sticky md:top-36">
             {!source && <FloatingChips />}
             <PhoneFrame aspect={stageSize.width / stageSize.height}>
               {/* Audio disabled: the app never plays sound. */}
@@ -238,7 +245,7 @@ function StudioInner() {
                 <Feature icon={<ShieldCheck size={18} />} label="Hides private data" />
               </ul>
 
-              <div className="flex flex-col gap-2">
+              <div id="stage-request" className="flex scroll-mt-40 flex-col gap-2">
                 <StepLabel n={1} text="Your screen recording" />
                 <label
                   className={`relative flex min-h-24 cursor-pointer items-center gap-4 rounded-2xl p-4 ${
@@ -286,7 +293,7 @@ function StudioInner() {
               </button>
               {!source && <p className="-mt-3 text-center text-[12px] text-fg/45">Pick a recording first</p>}
 
-              <div ref={resultsRef} className="scroll-mt-40">
+              <div id="stage-plan" ref={resultsRef} className="scroll-mt-40">
                 {busy && (
                   <p className="flex items-center gap-2 rounded-2xl border border-fg/10 bg-bg/60 p-4 text-sm font-semibold">
                     <Loader2 size={16} className="animate-spin text-accent" />
